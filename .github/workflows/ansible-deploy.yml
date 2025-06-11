@@ -60,7 +60,7 @@ jobs:
       id: ansible-dry-run
       run: |
         export exitcode=0
-        ansible-playbook -i inventories/poc/aws_ec2.yaml bastion.yaml --check --diff | tee ansible-dry-run
+        ansible-playbook -i inventories/poc/aws_ec2.yaml bastion.yaml --diff | tee ansible-dry-run
 
         if [ "${PIPESTATUS[0]}" -ne 0 ]; then
           echo "Ansible dry-run failed!" | tee -a ansible-dry-run
