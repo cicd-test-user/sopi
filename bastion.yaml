@@ -1,6 +1,6 @@
 - name: Test command on Batch Servers
   hosts: batch
-  gather_facts: true
+  gather_facts: false
   become: true
 
   tasks:
