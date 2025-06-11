@@ -5,10 +5,5 @@
 
   tasks:
     - name: Run test command
-      ansible.builtin.command: uptime
-      register: result
-      changed_when: false
-
-    - name: Show result
-      ansible.builtin.debug:
-        var: result.stdout
+      ansible.builtin.shell: echo "Hello, World!" > /tmp/hello.txt
+      
