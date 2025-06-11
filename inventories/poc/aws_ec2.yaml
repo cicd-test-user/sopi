@@ -1,0 +1,32 @@
+# Amazon EC2インベントリプラグインを使用（Ansible公式ではなく amazon.aws コレクションのプラグイン）
+plugin: amazon.aws.aws_ec2
+
+# 対象とするAWSリージョン（東京リージョン）
+regions:
+  - ap-northeast-1
+
+# インスタンスのフィルタ条件：Environment タグが 'poc' のEC2のみ対象とする
+filters:
+  tag:Environment:
+    - poc
+
+# ホスト名として使用する情報：ここでは EC2の Name タグの値を使用する
+hostnames:
+  - tag:Name
+
+# EC2のタグ情報から Ansible グループを動的に作成する設定
+keyed_groups:
+  # tags.Environment の値をグループ名として使用（例: Environment=poc → グループ名: poc）
+  - key: tags.Environment
+    separator: ''  # セパレータはなし（例: tags.Environment + separator + value → poc）
+    prefix: ''     # プレフィックスはなし（例: group name に"env_"などを付けない）
+
+  # tags.Role の値をグループ名として使用（例: Role=web → グループ名: web）
+  - key: tags.Role
+    separator: ''
+    prefix: ''
+
+# ホスト変数として ansible_host に EC2インスタンスIDを設定
+# ※これは SSM接続（ansible_connection: amazon.aws.aws_ssm）用に必要な設定
+compose:
+  ansible_host: instance_id

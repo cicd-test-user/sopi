@@ -1,0 +1,169 @@
+# .github/workflows/ansible-deploy.yml
+name: 'Ansible playbook dry-run/apply'
+
+on:
+  # mainブランチへのpush、またはmainブランチへのPR作成時にワークフローを実行
+  push:
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
+
+# OIDC認証を行うために必要な権限を設定
+permissions:
+  id-token: write                # OIDCトークン発行に必要
+  contents: read                 # リポジトリの内容を読むために必要
+  pull-requests: write           # PRへのコメント投稿に必要
+
+jobs:
+  ansible-dry-run:
+    name: 'Ansible dry-run'
+    runs-on: ubuntu-24.04
+    env:
+      # Terraformの不要なエラー抑制用（ここでは効果は限定的）
+      ARM_SKIP_PROVIDER_REGISTRATION: true
+    outputs:
+      # dry-runの終了コードを後続ジョブへ渡す
+      dryrunExitCode: ${{ steps.ansible-dry-run.outputs.exitcode }}
+
+    steps:
+    # ソースコードをGitHub Actionsのランナーにチェックアウト
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # GitHub OIDCを使ってAWSにログイン（指定したIAMロールを引き受ける）
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        aws-region: ap-northeast-1
+        role-to-assume: arn:aws:iam::368017226728:role/GitHubActionsOidcRole
+
+    # Pythonセットアップ（Ansible実行のため）
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13.3'
+        cache: 'pip'
+
+    # Ansibleと依存コレクションのインストール
+    - name: Setup Ansible
+      shell: bash
+      run: |
+        pip install -r requirements.txt
+        ansible-galaxy install -r requirements.yaml
+
+    # Ansibleのdry-runを実行（--check --diff で変更内容を表示）
+    # 変更があれば exitcode=2、失敗で exitcode=1、変更なしで exitcode=0 を設定
+    - name: Ansible dry-run
+      id: ansible-dry-run
+      run: |
+        export exitcode=0
+        ansible-playbook -i inventories/poc/aws_ec2.yaml bastion.yaml --check --diff | tee ansible-dry-run
+
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+          echo "Ansible dry-run failed!" | tee -a ansible-dry-run
+          export exitcode=${PIPESTATUS[0]}
+        else
+          grep -i "changed" ansible-dry-run | grep -v "changed=0"
+          if [ $? -eq 0 ]; then
+            export exitcode=2
+          else
+            export exitcode=0
+          fi
+        fi
+
+        echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+
+        if [ $exitcode -ne 0 ] && [ $exitcode -ne 2 ]; then
+          echo Ansible dry-run Failed!
+          exit 1
+        else
+          exit 0
+        fi
+
+    # dry-runの出力を文字列として取得・加工（後続ステップで利用するため）
+    - name: Create String Output
+      id: ansible-dry-run-string
+      run: |
+        ANSIBLE_DRY_RUN=$(cat ansible-dry-run)
+
+        delimiter="$(openssl rand -hex 8)"
+        echo "summary<<${delimiter}" >> $GITHUB_OUTPUT
+        echo "## Ansible dry-run Output" >> $GITHUB_OUTPUT
+        echo "<details><summary>Click to expand</summary>" >> $GITHUB_OUTPUT
+        echo "" >> $GITHUB_OUTPUT
+        echo '```ansible-dry-run' >> $GITHUB_OUTPUT
+        echo "$ANSIBLE_DRY_RUN" >> $GITHUB_OUTPUT
+        echo '```' >> $GITHUB_OUTPUT
+        echo "</details>" >> $GITHUB_OUTPUT
+        echo "${delimiter}" >> $GITHUB_OUTPUT
+
+    # dry-run結果をGitHub ActionsのJobの「Summary」セクションに出力
+    - name: Publish Ansible dry-run to Task Summary
+      env:
+        SUMMARY: ${{ steps.ansible-dry-run-string.outputs.summary }}
+      run: |
+        echo "$SUMMARY" >> $GITHUB_STEP_SUMMARY
+
+    # PR時のみ、dry-run結果をコメントとして投稿（mainブランチでない場合）
+    - name: Push Ansible dry-run Output to PR
+      if: github.ref != 'refs/heads/main'
+      uses: actions/github-script@v7
+      env:
+        SUMMARY: "${{ steps.ansible-dry-run-string.outputs.summary }}"
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const body = `${process.env.SUMMARY}`;
+          github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+          })
+
+  # 実行フェーズ（dry-run結果がexitcode=2かつmainブランチの場合のみ）
+  ansible-apply:
+    name: 'Ansible Apply / Run playbook'
+    if: github.ref == 'refs/heads/main' && needs.ansible-dry-run.outputs.dryrunExitCode == '2'
+    runs-on: ubuntu-24.04
+    environment: production
+    needs:
+      - ansible-dry-run
+
+    steps:
+    # ソースコードチェックアウト
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # AWS OIDC認証設定
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        audience: sts.amazonaws.com
+        aws-region: ap-northeast-1
+        role-to-assume: arn:aws:iam::368017226728:role/GitHubActionsOidcRole
+
+    # Pythonのセットアップ
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13.3'
+        cache: 'pip'
+
+    # Ansibleインストール
+    - name: Setup Ansible
+      shell: bash
+      run: |
+        pip install -r requirements.txt
+        ansible-galaxy install -r requirements.yaml
+
+    # 実際にAnsible Playbookを実行（dry-runなしで本番適用）
+    - name: Run Ansible Playbook
+      id: ansible-apply
+      run: |
+        pwd
+        ls -l
+        ansible-playbook -i inventories/poc/aws_ec2.yaml bastion.yaml --diff

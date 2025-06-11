@@ -1,0 +1,14 @@
+- name: Test command on Batch Servers
+  hosts: batch
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Run test command
+      ansible.builtin.command: uptime
+      register: result
+      changed_when: false
+
+    - name: Show result
+      ansible.builtin.debug:
+        var: result.stdout
