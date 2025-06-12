@@ -3,7 +3,7 @@
   # 対象ホストグループ（inventory上の "batch" グループ）に対して実行
   hosts: batch
   # OS情報やネットワーク情報の取得をスキップ（軽量化のため）
-  gather_facts: false
+  gather_facts: true
   # タスク実行時にsudo（root権限）を使用
   become: true
 
@@ -11,4 +11,4 @@
     # シンプルなテストコマンドを実行するタスク
     - name: Run test command
       # /tmp/hello.txt に "Hello, World!" を書き込む（確認用ファイル）
-      ansible.builtin.shell: echo "Hello, World!" > /tmp/hello.txt
+      ansible.builtin.shell: echo "sopi!" > /tmp/hello.txt
