@@ -7,8 +7,5 @@
   # タスク実行時にsudo（root権限）を使用
   become: true
 
-  tasks:
-    # シンプルなテストコマンドを実行するタスク
-    - name: Run test command
-      # /tmp/hello.txt に "Hello, World!" を書き込む（確認用ファイル）
-      ansible.builtin.shell: echo "sopi-batch-test2!" > /tmp/hello.txt
+  roles:
+    - cloudwatch_agent

@@ -1,0 +1,76 @@
+- name: Download CloudWatch Agent package
+  get_url:
+    url: https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm
+    dest: /tmp/amazon-cloudwatch-agent.rpm
+    mode: '0644'
+
+- name: Install CloudWatch Agent
+  yum:
+    name: /tmp/amazon-cloudwatch-agent.rpm
+    state: present
+
+- name: Create CloudWatch Agent config directory
+  file:
+    path: /opt/aws/amazon-cloudwatch-agent/etc/
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy CloudWatch Agent config file
+  copy:
+    dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    content: |
+      {
+        "logs": {
+          "logs_collected": {
+            "files": {
+              "collect_list": [
+                {
+                  "file_path": "/var/log/messages",
+                  "log_group_name": "/idpf/dev_ut1/system/idpf-dev_ut1-batch-01/os/linux/messages"
+                },
+                {
+                  "file_path": "/var/log/cron",
+                  "log_group_name": "/idpf/dev_ut1/system/idpf-dev_ut1-batch-01/os/linux/cron"
+                },
+                {
+                  "file_path": "/var/log/secure",
+                  "log_group_name": "/idpf/dev_ut1/security/idpf-dev_ut1-batch-01/os/linux/secure"
+                },
+                {
+                  "file_path": "/var/log/audit",
+                  "log_group_name": "/idpf/dev_ut1/security/idpf-dev_ut1-batch-01/os/linux/audit"
+                },
+                {
+                  "file_path": "/opt/hulft/etc/trace/*.log",
+                  "log_group_name": "/idpf/dev_ut1/system/idpf-dev_ut1-batch-01/mw/hulft"
+                },
+                {
+                  "file_path": "/opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log",
+                  "log_group_name": "/idpf/dev_ut1/system/idpf-dev_ut1-batch-01/mw/cwagent"
+                }
+              ]
+            }
+          }
+        }
+      }
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Apply CloudWatch Agent config
+  command: >
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl
+    -a fetch-config
+    -m ec2
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    -s
+  register: cwagent_apply_result
+  changed_when: "'Successfully started amazon-cloudwatch-agent' in cwagent_apply_result.stdout"
+
+- name: Enable and start CloudWatch Agent service
+  systemd:
+    name: amazon-cloudwatch-agent
+    enabled: true
+    state: started
