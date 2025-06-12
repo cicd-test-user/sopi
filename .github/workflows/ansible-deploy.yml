@@ -59,7 +59,7 @@ jobs:
       id: ansible-dry-run
       run: |
         export exitcode=0
-        ansible-playbook -i inventories/poc/aws_ec2.yaml playbooks/batch.yaml | tee ansible-dry-run
+        ansible-playbook -i inventories/poc/aws_ec2.yaml batch.yaml | tee ansible-dry-run
 
         if [ "${PIPESTATUS[0]}" -ne 0 ]; then
           echo "Ansible dry-run failed!" | tee -a ansible-dry-run
@@ -165,4 +165,4 @@ jobs:
       run: |
         pwd
         ls -l
-        ansible-playbook -i inventories/poc/aws_ec2.yaml playbooks/batch.yaml
+        ansible-playbook -i inventories/poc/aws_ec2.yaml batch.yaml
